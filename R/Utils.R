@@ -188,8 +188,7 @@ harmonise_gwas = function(df) {
 # Function to get MAF information
 harmonise_maf = function(df) {
   
-  rndn_snp = df[1,]$SNP
-  
+  rndn_snp = df[1,]$SNP  
   # PART 1
   # Understand the format the SNP is in
   indels = indelsFinder(df$SNP)
@@ -298,6 +297,8 @@ getMAF = function(df) {
 # Figuring out the snp format from the input document
 checkFormat = function(snp) { 
   if (grepl(paste0("chr", 1:22, ":", collapse="|"), x = snp)) {
+    snpFormat = "chr:bp"
+  } else if (grepl(paste0(1:22, ":", collapse="|"), x = snp)) {
     snpFormat = "chr:bp"
   } else if (grepl(paste0("chr", 1:22, "_", collapse="|"), x = snp)) {
     snpFormat = "chr_bp" 

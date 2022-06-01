@@ -1,0 +1,290 @@
+
+
+## Library loading
+.libPaths("/mnt/rreal/RDS/acarrasco/R_libs/")
+library(data.table)
+library(stringr)
+library(tidyverse)
+library(colochelpR)
+library(SNPlocs.Hsapiens.dbSNP144.GRCh38)
+library(SNPlocs.Hsapiens.dbSNP144.GRCh37)
+library(BSgenome.Hsapiens.NCBI.GRCh38) # Necessary if I want to deduce the genome build
+
+# I will take the data from args
+# I will check the number of args passed.
+# Args must have DATA, BUILD, OPTIONAL(MAF)
+data = fread("TPD_36m.SCEBE.rstime_modelBasic_Rsq0.8.txt")
+maf = fread("../GENOTYPE_UPDATED/PROBAND_freq.frq")
+
+
+#### PART 1 ####
+# UNDERSTAND THE INPUT DATA #
+
+# Getting random SNP
+rndn_snp = data[1,]$SNP
+
+# TODO
+# Create ca function to check basic format
+# check SNP column is present
+# Check
+
+# Figuring out the snp format from the input document
+checkFormat = function(rndn_snp) { 
+  if (grepl(paste0("chr", 1:22, ":", collapse="|"), x = rndn_snp)) {
+    snpFormat = "chr:bp"
+  } else if (grepl(paste0("chr", 1:22, "_", collapse="|"), x = rndn_snp)) {
+    snpFormat = "chr_bp" 
+  } else if (startsWith(rndn_snp, prefix="rs")) {
+    snpFormat = "rs"
+  } else {
+    message("Make sure the variant columnd is named \"SNP\"") 
+    message("In addition, only chr:, chr_, or rs formats are supported")
+    stop("SNP format not supported")
+  }
+  return(snpFormat)
+}
+
+
+# Understand the SNP data a bit further.
+# Sometimes the "*" pattern is present, which stands for an indel
+# If this character is present, using separate from tidyverse causes disruptions
+indelsFinder = function(snpVector) {
+  if (any(grepl("*",  snpVector))) {
+    indelStatus = TRUE 
+  } else {
+    indelStatus = FALSE
+  }
+  return(indelStatus)
+}
+
+
+# Sometimes the snpFormat is chr:bp.
+# When getting snp data in traw format,
+# The allele tested is appended in the string as "_Allele".
+# This is problemmatic when splitting the snp to get further information
+
+# This function should be run always that snpFormat = chr:bp
+sepCharacters = function(rndn_snp) {
+  if ( grepl("_", rndn_snp) & grepl(":", rndn_snp) ) {
+    singleSep = FALSE
+  } else {
+    singleSep = TRUE
+  }
+  return(singleSep)
+}
+
+
+# At this point, we have all the information we need about the SNP format
+# We will also need to take from the user the genome buils the SNP is in
+
+
+
+## Outside this function I want a more generic function that determines whether 
+## the snp is in rsid format of not.
+## If snp is in rsid format, we use another function to use colochelpR to retrieve 
+## chr, bp, 
+
+singleSep = sepCharacters(rndn_snp)
+indels = indelsFinder(data$SNP)
+snpFormat = checkFormat(rndn_snp)
+
+
+####### PART 2 ######
+# Use the information collected to perform the QC
+
+# This function is meant to be used for data with SNP on CHRBP format
+# Unnecessary processing for data with rsIDs
+snpProcessor = function(df,
+                        sep = TRUE,
+                        ind = indels, 
+                        snpFormat = snpFormat) {
+  if (!snpFormat == "rs") {
+    if (!sep) { # I enter here
+      tmp = as.data.frame(stringr::str_split_fixed(df$SNP, pattern = "_",  n = 2))
+    
+      snp_splitted = 
+        cbind(as.data.frame(stringr::str_split_fixed(tmp$V1, pattern = ":",  n = 4)), 
+              tmp$V2)
+      names(snp_splitted) = c("CHR", "BP", "REF", "ALT", "A1")
+    
+    } 
+    else {
+      # Get the special character
+      snp_sep = substr(snpFormat, 4,4)
+      snp_splitted = 
+        as.data.frame(stringr::str_split_fixed(df$SNP, n = 5, pattern= snp_sep))
+      names(snp_splitted) = c("CHR", "BP", "REF", "ALT", "A1")
+    }
+  
+  } 
+  else {
+    snp_sep = "_"
+    snp_splitted = 
+      as.data.frame(stringr::str_split_fixed(df$SNP, n = 2, pattern = snp_sep))
+    names(snp_splitted) = c("rsID", "A1")
+  } 
+  
+  df = cbind(snp_splitted, df) %>% 
+    dplyr::select(-SNP) 
+  
+}
+  
+
+
+## Data harmonization
+# I should be able to deal with col names easily since it was me who defined them
+
+
+# Probably I do not want to create a function just for this. 
+# I should consider including this somewhere
+harmonise_GWAS = function(df, build = NULL) {
+  
+  if (is.null(build) ) {
+    stop("Provdie genome build to which you want to harmonise with")
+  }
+  
+  rndn_snp = df[1,]$SNP
+  
+  # PART 1
+  # Understand the format the SNP is in
+  singleSep = sepCharacters(rndn_snp)
+  indels = indelsFinder(df$SNP)
+  snpFormat = checkFormat(rndn_snp)
+  
+  
+  # Part 3
+  
+  # Processing for CHR:BP, and loading the SNP loc objects
+  # Then, we retrive either rsids or chr:bp
+  
+  if (!snpFormat == "rs") {
+    data_tmp = snpProcessor(df, sep = singleSep, ind = indels, snpFormat = snpFormat)
+
+    
+    # Minor processing
+    if ( !is.numeric(data_tmp$CHR) | !is.numeric(data_tmp$BP) ) { # Minor processing 
+      data_tmp = data_tmp %>%
+        mutate(CHR = as.numeric(gsub(".*chr", "", CHR)),
+               BP = as.numeric(BP)) 
+    }
+    
+    
+    # Using the build info to harmonose using colochelpR
+    ## TODO
+    # Fin a method that use any function such as find overlap to infet the build
+    # of the input data
+    if (build == "hg19" | build == "hg37") {
+      dbSNP = SNPlocs.Hsapiens.dbSNP144.GRCh37
+    } else {
+      dbSNP = SNPlocs.Hsapiens.dbSNP144.GRCh38
+    }
+    df_final = colochelpR::convert_loc_to_rs(df = data_tmp, dbSNP = dbSNP) %>%
+      dplyr::filter(!is.na(SNP)) %>%
+      dplyr::relocate(SNP, .before = CHR) %>%
+      dplyr::mutate(CHR =  as.numeric(levels(CHR)[CHR]))
+    #df_final$CHR = as.numeric(levels(data_procesed$CHR)[data_procesed$CHR])
+  }
+  
+  else if (snpFormat == "rs") {
+    dbSNP = SNPlocs.Hsapiens.dbSNP144.GRCh37
+    df_final =  colochelpR::convert_rs_to_loc(df = df, SNP_column = "SNP", dbSNP = dbSNP)
+  }
+  else {
+    stop("Make sure the SNP column is named in the correct way and SNP data is in the correct format")
+  }
+  
+  return(df_final)
+  
+}
+
+# Function to get MAF information
+harmonise_maf = function(df) {
+  
+  rndn_snp = df[1,]$SNP
+  
+  # PART 1
+  # Understand the format the SNP is in
+  indels = indelsFinder(df$SNP)
+  snpFormat = checkFormat(rndn_snp)
+  
+  
+  if (!snpFormat == "rs") {
+    df = df %>% dplyr::select(-CHR)
+    
+    # Get the special character
+    snp_sep = substr(snpFormat, 4,4)
+    snp_splitted = 
+      as.data.frame(stringr::str_split_fixed(df$SNP, n = 4, pattern= snp_sep))
+    names(snp_splitted) = c("CHR", "BP", "REF", "ALT")
+    
+    data_final = cbind(snp_splitted, df) %>% 
+      dplyr::select(-SNP) 
+    if ( !is.numeric(data_final$CHR) | !is.numeric(data_final$BP) ) {  
+      data_final = data_final %>%
+        mutate(CHR = as.numeric(gsub(".*chr", "", CHR)),
+               BP = as.numeric(BP))
+    }
+    
+    data_final = data_final %>%
+      dplyr::select(-c(REF,ALT))
+    
+  }
+  else if (snpFormat =="rs") {
+    data_final = df
+    warning("This maf file does not need processing and is ready to be merged by rsID")
+  }
+  return(data_final)
+}
+  
+
+
+harmonization = function(gwas, maf, outcome = FALSE) {
+  
+  
+  data_final = gwas  %>%
+    dplyr::inner_join(maf, by = c("CHR", "BP", "A1")) %>%
+    dplyr::relocate(c(A2,MAF), .after = A1)
+  
+  if (outcome) {
+    data_final = split(data_final, f = data_final$OUTCOME)
+  }
+  return(data_final)
+}
+
+  
+  
+
+  else {
+    stop("Make sure the SNP column is named in the correct way and SNP data is in the correct format")
+  }
+  
+  return(df_final)
+  
+}
+
+
+  
+  
+  
+  
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

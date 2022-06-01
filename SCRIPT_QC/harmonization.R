@@ -1,17 +1,5 @@
 #!/usr/bin/Rscript 
 
-## Library loading
-.libPaths("/mnt/rreal/RDS/acarrasco/R_libs/")
-library(data.table)
-library(stringr)
-library(tidyverse)
-library(colochelpR)
-library(SNPlocs.Hsapiens.dbSNP144.GRCh38)
-library(SNPlocs.Hsapiens.dbSNP144.GRCh37)
-library(here)
-library(purrr)
-library(BSgenome.Hsapiens.NCBI.GRCh38) # Necessary if I want to deduce the genome build
-
 
 # TODO
 # Add a proper example usage on the script.
@@ -30,6 +18,17 @@ if (length(args) < 4) {
   stop("Exiting....\n")
 }
 
+## Library loading
+.libPaths("/mnt/rreal/RDS/acarrasco/R_libs/")
+library(data.table)
+library(stringr)
+library(tidyverse)
+library(colochelpR)
+library(SNPlocs.Hsapiens.dbSNP144.GRCh38)
+library(SNPlocs.Hsapiens.dbSNP144.GRCh37)
+library(here)
+library(purrr)
+library(BSgenome.Hsapiens.NCBI.GRCh38) # Necessary if I want to deduce the genome build
 
 # Loading data from stding
 gwas = fread(args[1])
@@ -39,8 +38,8 @@ outcome = args[4]
 
 # Loading all the functions needed to do the QC
 # Using here as these functions are under the root project folder
-source(here::here("R/Utils.R"))
-
+#source(here::here("R/Utils.R"))
+source("/mnt/rreal/RDS/acarrasco/TOOLS/postgwasQC/R/Utils.R")
 
 gwas_QC = harmonise_gwas(gwas)
 maf_QC = harmonise_maf(maf)

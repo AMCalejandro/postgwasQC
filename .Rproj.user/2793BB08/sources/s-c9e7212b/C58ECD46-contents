@@ -44,13 +44,16 @@
 #' @return genome build detected as chr
 #' @export
 #'
+
+
+# I found indels to be proble
 inferBuild = function(df) {
   n = 0
   index = 0
   count = 0
   dbSNP = SNPlocs.Hsapiens.dbSNP144.GRCh38
   
-  while (n < 5) {
+  while (n < 60) {
     index = index + 1
   
     myRow = df[index, ]
@@ -63,8 +66,8 @@ inferBuild = function(df) {
     }
     else {
       n = n + 1
-      if ( (myRow$REF == refsnp$ref_allele) & 
-           (myRow$ALT %in% refsnp$alt_alleles) ) {
+      if ( any((myRow$REF == refsnp$ref_allele) & 
+           (myRow$ALT %in% refsnp$alt_alleles)) ) {
         count = count + 1
       }
       else {
@@ -72,25 +75,23 @@ inferBuild = function(df) {
       }
     }
   }
-  if (count == -5) {
+  if (count == -60) {
     build = "hg19"
-  } else if (count == 5) {
+  } else if (count == 60) {
     build = "hg38"
   } else {
-    warning("Some discrepancies between the REF and ALT alleles from GWAS files have been found compared to the HSapiens Genome Sequence by NCBI \n")
-    message("Using the most likely Reference.... \n")
     
-    if (count > 0) {
+    warning("Some discrepancies between the REF and ALT alleles from GWAS files have been found compared to the HSapiens Genome Sequence by NCBI \n")
+    
+    if (count > 10) {
       build = "hg38"
-    } else if (count < 0) {
+    } else if (count < -10) {
       build = "hg19"
     } else {
       stop("Something is going wrong")
     }
-    
     message("Using the most likely build: ", build)
   }
-  
   return(build)
 }
 
@@ -188,8 +189,7 @@ harmonise_gwas = function(df) {
 # Function to get MAF information
 harmonise_maf = function(df) {
   
-  rndn_snp = df[1,]$SNP
-  
+  rndn_snp = df[1,]$SNP  
   # PART 1
   # Understand the format the SNP is in
   indels = indelsFinder(df$SNP)
@@ -298,6 +298,8 @@ getMAF = function(df) {
 # Figuring out the snp format from the input document
 checkFormat = function(snp) { 
   if (grepl(paste0("chr", 1:22, ":", collapse="|"), x = snp)) {
+    snpFormat = "chr:bp"
+  } else if (grepl(paste0(1:22, ":", collapse="|"), x = snp)) {
     snpFormat = "chr:bp"
   } else if (grepl(paste0("chr", 1:22, "_", collapse="|"), x = snp)) {
     snpFormat = "chr_bp" 

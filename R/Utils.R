@@ -106,7 +106,7 @@ inferBuild = function(df) {
 # of the input data
 harmonise_metal = function(df, N) {
   data_filtered <- df 
-    filter(HetDf >= N -2) 
+    filter(HetDf >= (N -1) - 2 )
     
   data_filtered_sorted <- data_filtered %>%
     arrange(`P-value`)
@@ -128,9 +128,10 @@ harmonise_metal = function(df, N) {
     rename(rsID = MarkerName,
            pval = `P-value`)
   
+  cat("Writing metal output...\n")
   fwrite(export_FUMA, "metaanalysis_FUMA.txt", quote = F, row.names = F, col.names = T, sep = "\t")
+  fwrite(data_filtered_sorted_het_MAF, "metalQCed.txt", quote = F, row.names = F, col.names = T, sep = "\t")
 }
-
 
 
 # Probably I do not want to create a function just for this. 
